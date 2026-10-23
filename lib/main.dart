@@ -30,10 +30,12 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   final LatLng _center = const LatLng(55.75, 37.61);
   bool _isRiding = false;
-  String _serverStatus = 'Подключение...';
+  String _serverStatus = 'Проверка сервера...';
   bool _serverOnline = false;
 
-  final String apiUrl = 'https://skyy-server.onrender.com/api/scooter/KA547X/command';
+  // Адреса сервера
+  final String baseUrl = 'https://skyy-server.onrender.com';
+  final String scooterId = 'KA547X';
 
   @override
   void initState() {
@@ -43,11 +45,20 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _checkServer() async {
     try {
-      final r = await http.get(Uri.parse('https://skyy-server.onrender.com/api/scooters'));
+      final r = await http.get(
+        Uri.parse('$baseUrl/api/scooters'),
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+      ).timeout(const Duration(seconds: 15)); // Ждем до 15 секунд (сервер может спать)
+
       if (r.statusCode == 200) {
         setState(() {
           _serverOnline = true;
           _serverStatus = 'Сервер онлайн';
+        });
+      } else {
+        setState(() {
+          _serverOnline = false;
+          _serverStatus = 'Ошибка сервера';
         });
       }
     } catch (e) {
@@ -60,13 +71,28 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> sendCommand(String cmd) async {
     try {
-      await http.post(Uri.parse(apiUrl), body: cmd);
-      setState(() {
-        _isRiding = (cmd == 'START');
-      });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Команда $cmd отправлена!')));
+      final r = await http.post(
+        Uri.parse('$baseUrl/api/scooter/$scooterId/command'),
+        headers: {"Content-Type": "application/x-www-form-urlencoded"},
+        body: cmd,
+      ).timeout(const Duration(seconds: 10));
+
+      if (r.statusCode == 200) {
+        setState(() {
+          _isRiding = (cmd == 'START');
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Команда $cmd отправлена!')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ошибка: сервер отклонил запрос')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ошибка: сервер не отвечает')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ошибка: сервер не отвечает (таймаут)')),
+      );
     }
   }
 
@@ -75,6 +101,7 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       body: Stack(
         children: [
+          // КАРТА
           FlutterMap(
             options: MapOptions(
               initialCenter: _center,
@@ -97,6 +124,8 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ],
           ),
+
+          // ВЕРХНЯЯ ПАНЕЛЬ
           Positioned(
             top: 50,
             left: 16,
@@ -131,6 +160,8 @@ class _MapScreenState extends State<MapScreen> {
               ],
             ),
           ),
+
+          // НИЖНЯЯ ПАНЕЛЬ
           Positioned(
             bottom: 0,
             left: 0,
@@ -147,6 +178,7 @@ class _MapScreenState extends State<MapScreen> {
                 children: [
                   const Text('Самокат рядом', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
+                  
                   Row(
                     children: [
                       const CircleAvatar(
@@ -155,13 +187,13 @@ class _MapScreenState extends State<MapScreen> {
                         child: Icon(Icons.electric_scooter, color: Color(0xFFFF5A1F), size: 30),
                       ),
                       const SizedBox(width: 16),
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('KA547X', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            Text('Ninebot Max', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                            Text('Заряд: 100%', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text(scooterId, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            const Text('Ninebot Max', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                            const Text('Заряд: 100%', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
                           ],
                         ),
                       ),
@@ -172,7 +204,9 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ],
                   ),
+                  
                   const SizedBox(height: 24),
+                  
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -186,7 +220,9 @@ class _MapScreenState extends State<MapScreen> {
                       child: Text(_isRiding ? 'В пути...' : 'Старт', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     ),
                   ),
+                  
                   const SizedBox(height: 12),
+                  
                   Center(
                     child: Text(
                       _serverStatus,
